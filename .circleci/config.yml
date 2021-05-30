@@ -243,6 +243,10 @@ workflows:
       - itestsource:
           requires:
             - localbuild
+      - itestbuild:
+          requires:
+            - localbuild
+            - itestsource
       # - itestdocker:
       #     requires:
       #       - localbuild
