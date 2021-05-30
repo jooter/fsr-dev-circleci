@@ -128,6 +128,16 @@ jobs:
           command: make useremote
           working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
       - run:
+          command: echo 1
+      - run:
+          name: Check main modules in go.mod again
+          background: true
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
+          command: make check-main-modules
+      - run:
+          command: echo 2
+      - run:
           name: Check any go.mod has been updated by useremote, if failed, is a warning only
           working_directory: /home/circleci/go/src/github.com/ConsenSys/
           background: true
@@ -148,10 +158,7 @@ jobs:
             done
             test ! -s go_mod_diff.txt
       - run:
-          name: Check main modules in go.mod
-          background: true
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
-          command: make check-main-modules
+          command: echo 3
       - run:
           command: echo end of this job
 
