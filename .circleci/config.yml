@@ -45,6 +45,49 @@ commands:
             git rev-parse HEAD
           working_directory: << parameters.workdir >>
 
+  build-docker-and-itest:
+    description: "Build docker images and itest"
+    steps:
+      - run:
+          name: Make Integration Tests
+          command: make clean build tag
+      - run:
+          name: Make Gateway
+          command: make clean build tag
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway/
+      - run:
+          name: Make Provider
+          command: make clean build tag
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider/
+      - run:
+          name: Make Register
+          command: make clean build tag
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register/
+      - run:
+          name: Make Lotus Base Image
+          command: make lotusbase
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+      - run:
+          name: Make Lotus Daemon
+          command: make lotusdaemon
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+#      - run:
+#          name: Make Lotus Full Node
+#          command: make lotusfullnode
+#          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+#          no_output_timeout: 120s
+      - run:
+          name: Run Itegration Tests
+          command: make itestlocal
+          no_output_timeout: 120s
+
+  build-docker-and-itest-2:
+    description: "Build docker images and itest 2"
+    steps:
+      - run:
+          name: Make Integration Tests
+          command: echo make clean build tag
+ 
 jobs:
   # Do a local build first, just to make sure the integration test code builds.
   checkmainmodules:
@@ -66,6 +109,16 @@ jobs:
       - run: true make lbuild
 
   # Integration tests using source code
+  #
+  # 1 checkout
+  # check-main-modules
+  # 2 lbuild - build tests
+  # 3 useremote
+  # check-main-modules
+  # 4 lbuild - build tests
+  #
+  # 5 build docker images
+  # 6 itestlocal
   itestsource:
     machine:
       image: ubuntu-1604:202007-01
@@ -159,38 +212,7 @@ jobs:
           command: make lbuild
           workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
 
-      - run:
-          name: Make Integration Tests
-          command: make clean build tag
-      - run:
-          name: Make Gateway
-          command: make clean build tag
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway/
-      - run:
-          name: Make Provider
-          command: make clean build tag
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider/
-      - run:
-          name: Make Register
-          command: make clean build tag
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register/
-      - run:
-          name: Make Lotus Base Image
-          command: make lotusbase
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
-      - run:
-          name: Make Lotus Daemon
-          command: make lotusdaemon
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
-#      - run:
-#          name: Make Lotus Full Node
-#          command: make lotusfullnode
-#          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
-#          no_output_timeout: 120s
-      - run:
-          name: Run Itegration Tests
-          command: make itestlocal
-          no_output_timeout: 120s
+      - build-docker-and-itest-2
 
   # Integration tests using Docker. Build and run integration tests based on go.mod
   itestdocker:
