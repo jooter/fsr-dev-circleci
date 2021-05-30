@@ -152,6 +152,8 @@ jobs:
           background: true
           workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
           command: make check-main-modules
+      - run:
+          command: echo end of this job
 
 
   # Integration tests using source code
@@ -237,8 +239,8 @@ workflows:
       # - itestdocker:
       #     requires:
       #       - localbuild
-      - checkmainmodules:
-          requires:
-            - localbuild
-            - itestsource
-            # - itestdocker
+    # - checkmainmodules:
+    #     requires:
+    #       - localbuild
+    #       - itestsource
+    #       # - itestdocker
