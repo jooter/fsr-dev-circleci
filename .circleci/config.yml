@@ -82,6 +82,40 @@ commands:
             git rev-parse HEAD
           working_directory: << parameters.workdir >>
 
+  getrepo:
+    description: "Get correct branch on repo"
+    steps:
+      # git clone the repos and switch to a branch which matches the
+      # name of the branch on the Client repo. If no such branch exists, just use main
+      - run:
+          name: "Git checkout correct branch"
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/
+          command: |
+            for repo in common register provider client gateway-admin gateway itest provider-admin
+            do
+              repo=fc-retrieval-$repo
+              git clone "https://github.com/ConsenSys/$repo"
+              cd $repo
+              BRANCH=$CIRCLE_BRANCH
+              if [ -z "$BRANCH" ]; then
+                echo Using main
+                BRANCH=main
+              else 
+                existed_in_local=$(git branch -r --list origin/"$BRANCH")
+                if [ -z "$existed_in_local" ]; then 
+                  echo $repo branch is main
+                else 
+                  echo $repo branch is "$BRANCH"
+                  git fetch
+                  git checkout "$BRANCH"
+                fi
+              fi
+              # echo to the screen the git hash
+              git rev-parse HEAD
+              cd ..
+            done
+
+
 
   build-docker-and-itest:
     description: "Build docker images and itest"
@@ -206,38 +240,16 @@ jobs:
       docker_layer_caching: false
     working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
     steps:
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-itest"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-client"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-client"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-common"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-common"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-gateway"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-gateway-admin"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway-admin"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-provider"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-provider-admin"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider-admin"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-register"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register"
+      - getrepo
 
       - run:
           command: pwd && make lbuild
-          workdirr: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+
       - run:
           name: Check main modules in go.mod
           background: true
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
           command: pwd && make check-main-modules
 
       - use-remote
@@ -247,6 +259,7 @@ jobs:
           background: true
           working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
           command: make check-main-modules
+
       - run:
           name: Check any go.mod has been updated by useremote, if failed, is a warning only
           working_directory: /home/circleci/go/src/github.com/ConsenSys/
