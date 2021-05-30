@@ -100,6 +100,7 @@ commands:
               if [ -z "$BRANCH" ]; then
                 echo Using main
                 BRANCH=main
+                exit 1
               else 
                 existed_in_local=$(git branch -r --list origin/"$BRANCH")
                 if [ -z "$existed_in_local" ]; then 
@@ -200,7 +201,10 @@ commands:
     description: "Build docker images and itest 2"
     steps:
       - run:
-          name: Make Integration Tests
+          name: Build Docker Image - fc daemon, reg, provider, gw
+          command: echo make clean build tag
+      - run:
+          name: Execute Integration Tests
           command: echo make clean build tag
  
 jobs:
