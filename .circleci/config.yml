@@ -243,22 +243,16 @@ jobs:
       - getrepo
 
       - run:
-          command: pwd && make lbuild
+          command: make lbuild \# in itest
           working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
 
       - run:
           name: Check main modules in go.mod
           background: true
           working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
-          command: pwd && make check-main-modules
+          command: make check-main-modules
 
       - use-remote
-
-      - run:
-          name: Check main modules in go.mod again
-          background: true
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
-          command: make check-main-modules
 
       - run:
           name: Check any go.mod has been updated by useremote, if failed, is a warning only
@@ -269,7 +263,7 @@ jobs:
             # it is warning for any go.mod has been updated by useremote
             # 
             rm -f go_mod_diff.txt
-            for repo in register provider gateway client gateway-admin provider-admin
+            for repo in register provider gateway client gateway-admin provider-admin itest
             do
               echo
               repo=fc-retrieval-$repo
@@ -281,7 +275,7 @@ jobs:
             done
             test ! -s go_mod_diff.txt
       - run:
-          command: make lbuild
+          command: make lbuild \# after use remote
           workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
 
       - build-docker-and-itest-2
