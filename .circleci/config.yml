@@ -1,0 +1,225 @@
+# Golang CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-go/ for more details
+version: 2.1
+parameters:
+  repox-branch:
+    type: string
+    default: ""
+commands:
+  getrepobranch:
+    description: "Get correct branch on repo"
+    parameters:
+      repo:
+        type: string
+      workdir:
+        type: string
+    steps:
+      # git clone the repos and switch to a branch which matches the
+      # name of the branch on the Client repo. If no such branch exists, just use main
+      - run:
+          name: "Git clone repo << parameters.repo >>"
+          command: |
+            git clone << parameters.repo >>
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/
+      - run:
+          name: "Git get correct branch for << parameters.repo >>"
+          #head=$(git --git-dir=fc-retrieval-gateway/.git rev-parse HEAD)
+          #git --git-dir=fc-retrieval-gateway/.git reset --hard "$head"
+          command: |
+            BRANCH=$CIRCLE_BRANCH
+            if [ -z "$BRANCH" ]; then
+              echo Using main
+              BRANCH=main
+            else 
+              existed_in_local=$(git branch -r --list origin/"$BRANCH")
+              if [ -z "$existed_in_local" ]; then 
+                echo << parameters.repo >> repo branch is main
+              else 
+                echo << parameters.repo >> branch is "$BRANCH"
+                git fetch
+                git checkout "$BRANCH"
+              fi
+            fi
+            # echo to the screen the git hash
+            git rev-parse HEAD
+          working_directory: << parameters.workdir >>
+
+jobs:
+  # Do a local build first, just to make sure the integration test code builds.
+  checkmainmodules:
+    docker:
+      - image: circleci/golang:1.15
+    working_directory: /go/src/github.com/ConsenSys/fc-retrieval-itest/
+    steps:
+      - checkout
+      - run:
+          name: Check main modules in go.mod
+          command: make check-main-modules
+
+  localbuild:
+    docker:
+      - image: circleci/golang:1.15
+    working_directory: /go/src/github.com/ConsenSys/fc-retrieval-itest/
+    steps:
+      - checkout
+      - run: make lbuild
+
+  # Integration tests using source code
+  itestsource:
+    machine:
+      image: ubuntu-1604:202007-01
+      docker_layer_caching: true
+    working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+    steps:
+      - getrepobranch:
+          repo: "https://github.com/ConsenSys/fc-retrieval-itest"
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
+      - getrepobranch:
+          repo: "https://github.com/ConsenSys/fc-retrieval-client"
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-client"
+      - getrepobranch:
+          repo: "https://github.com/ConsenSys/fc-retrieval-common"
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-common"
+      - getrepobranch:
+          repo: "https://github.com/ConsenSys/fc-retrieval-gateway"
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway"
+      - getrepobranch:
+          repo: "https://github.com/ConsenSys/fc-retrieval-gateway-admin"
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway-admin"
+      - getrepobranch:
+          repo: "https://github.com/ConsenSys/fc-retrieval-provider"
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider"
+      - getrepobranch:
+          repo: "https://github.com/ConsenSys/fc-retrieval-provider-admin"
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider-admin"
+      - getrepobranch:
+          repo: "https://github.com/ConsenSys/fc-retrieval-register"
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register"
+
+
+      - run:
+          name: Register - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register/
+      - run:
+          name: Provider - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider/
+      - run:
+          name: Client - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-client/
+      - run:
+          name: Gateway Admin - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway-admin/
+      - run:
+          name: Gateway - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway/
+      - run:
+          name: ITest - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+      - run:
+          name: Check any go.mod has been updated by useremote, if failed, is a warning only
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/
+          background: true
+          command: |
+            # if this task is failed, 
+            # it is warning for any go.mod has been updated by useremote
+            # 
+            rm -f go_mod_diff.txt
+            for repo in register provider gateway client gateway-admin provider-admin
+            do
+              echo
+              repo=fc-retrieval-$repo
+              cd $repo
+              git -P diff --unified=0 go.mod
+              echo check go.mod in $repo
+              git -P diff --unified=0 go.mod >> ../go_mod_diff.txt
+              cd ..
+            done
+            test ! -s go_mod_diff.txt
+      - run:
+          name: Make Integration Tests
+          command: make clean build tag
+      - run:
+          name: Make Gateway
+          command: make clean build tag
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway/
+      - run:
+          name: Make Provider
+          command: make clean build tag
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider/
+      - run:
+          name: Make Register
+          command: make clean build tag
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register/
+      - run:
+          name: Make Lotus Base Image
+          command: make lotusbase
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+      - run:
+          name: Make Lotus Daemon
+          command: make lotusdaemon
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+#      - run:
+#          name: Make Lotus Full Node
+#          command: make lotusfullnode
+#          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+#          no_output_timeout: 120s
+      - run:
+          name: Run Itegration Tests
+          command: make itestlocal
+          no_output_timeout: 120s
+
+  # Integration tests using Docker. Build and run integration tests based on go.mod
+  itestdocker:
+    machine:
+      image: ubuntu-1604:202007-01
+    working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+    steps:
+      - checkout
+      - run:
+          name: Make Integration Tests
+          command: make clean build
+      - run:
+          name: Log in to Docker registry
+          command: echo $GITHUB_ACCESS_TOKEN | docker login https://docker.pkg.github.com -u $GITHUB_USER --password-stdin
+      - run:
+          name: Run Itegration Tests
+          command: make itestdocker
+          no_output_timeout: 120s
+
+  # check parameter passing
+  checkparam:
+    docker:
+      - image: circleci/golang:1.15
+    environment:
+      REPOBRANCH: << pipeline.parameters.repox-branch >>
+    working_directory: /go/src/github.com/ConsenSys/fc-retrieval-itest/
+    steps:
+      - run:
+          name: "Check parameters"
+          command: |
+            echo "pipeline.parameters.repox-branch: ${REPOBRANCH}"
+            echo Circle Branch: $CIRCLE_BRANCH
+
+workflows:
+  version: 2
+  test_and_release:
+    jobs:
+      - localbuild
+      - itestsource:
+          requires:
+            - localbuild
+      # - itestdocker:
+      #     requires:
+      #       - localbuild
+      - checkmainmodules:
+          requires:
+            - localbuild
+            - itestsource
+            # - itestdocker
