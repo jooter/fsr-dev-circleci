@@ -119,6 +119,49 @@ commands:
           command: make itestlocal
           no_output_timeout: 120s
 
+  use-remote-0:
+    description: "Use remote 0"
+    steps:
+      - run:
+          name: Register - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register/
+      - run:
+          name: Provider - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider/
+      - run:
+          name: Client - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-client/
+      - run:
+          name: Gateway Admin - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway-admin/
+      - run:
+          name: Gateway - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway/
+      - run:
+          name: ITest - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+  use-remote:
+    description: "Use remote"
+    steps:
+      - run:
+          name: Use remote config
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/
+          command: |
+            for repo in register provider client gateway-admin gateway itest # provider-admin
+            do
+              repo=fc-retrieval-$repo
+              cd $repo
+              make useremote
+              cd ..
+            done
+ 
+
   build-docker-and-itest-2:
     description: "Build docker images and itest 2"
     steps:
@@ -189,38 +232,16 @@ jobs:
           workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register"
 
       - run:
-          command: make lbuild
+          command: pwd && make lbuild
           workdirr: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
       - run:
           name: Check main modules in go.mod
           background: true
           workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
-          command: make check-main-modules
+          command: pwd && make check-main-modules
 
-      - run:
-          name: Register - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register/
-      - run:
-          name: Provider - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider/
-      - run:
-          name: Client - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-client/
-      - run:
-          name: Gateway Admin - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway-admin/
-      - run:
-          name: Gateway - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway/
-      - run:
-          name: ITest - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+      - use-remote
+
       - run:
           name: Check main modules in go.mod again
           background: true
