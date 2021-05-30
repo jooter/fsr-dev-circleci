@@ -63,7 +63,7 @@ jobs:
     working_directory: /go/src/github.com/ConsenSys/fc-retrieval-itest/
     steps:
       - checkout
-      - run: make lbuild
+      - run: true make lbuild
 
   # Integration tests using source code
   itestsource:
