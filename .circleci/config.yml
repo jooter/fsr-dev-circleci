@@ -97,6 +97,11 @@ jobs:
           repo: "https://github.com/ConsenSys/fc-retrieval-register"
           workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register"
 
+      - run:
+          name: Check main modules in go.mod
+          background: true
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
+          command: make check-main-modules
 
       - run:
           name: Register - Use remote config
@@ -142,6 +147,20 @@ jobs:
               cd ..
             done
             test ! -s go_mod_diff.txt
+      - run:
+          name: Check main modules in go.mod
+          background: true
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
+          command: make check-main-modules
+
+
+  # Integration tests using source code
+  itestbuild:
+    machine:
+      image: ubuntu-1604:202007-01
+      docker_layer_caching: false
+    working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+    steps:
       - run:
           name: Make Integration Tests
           command: make clean build tag
