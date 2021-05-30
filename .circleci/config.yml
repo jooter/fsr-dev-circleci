@@ -7,7 +7,7 @@ parameters:
     type: string
     default: ""
 commands:
-  getrepobranch:
+  getrepobranch0:
     description: "Get correct branch on repo"
     parameters:
       repo:
@@ -44,6 +44,44 @@ commands:
             # echo to the screen the git hash
             git rev-parse HEAD
           working_directory: << parameters.workdir >>
+
+  getrepobranch:
+    description: "Get correct branch on repo"
+    parameters:
+      repo:
+        type: string
+      workdir:
+        type: string
+    steps:
+      # git clone the repos and switch to a branch which matches the
+      # name of the branch on the Client repo. If no such branch exists, just use main
+      - run:
+          name: "Git get correct branch for << parameters.repo >>"
+          #head=$(git --git-dir=fc-retrieval-gateway/.git rev-parse HEAD)
+          #git --git-dir=fc-retrieval-gateway/.git reset --hard "$head"
+          command: |
+            mkdir -p /home/circleci/go/src/github.com/ConsenSys/
+            cd /home/circleci/go/src/github.com/ConsenSys/
+            git clone << parameters.repo >>
+            cd << parameters.workdir >>
+            BRANCH=$CIRCLE_BRANCH
+            if [ -z "$BRANCH" ]; then
+              echo Using main
+              BRANCH=main
+            else 
+              existed_in_local=$(git branch -r --list origin/"$BRANCH")
+              if [ -z "$existed_in_local" ]; then 
+                echo << parameters.repo >> repo branch is main
+              else 
+                echo << parameters.repo >> branch is "$BRANCH"
+                git fetch
+                git checkout "$BRANCH"
+              fi
+            fi
+            # echo to the screen the git hash
+            git rev-parse HEAD
+          working_directory: << parameters.workdir >>
+
 
   build-docker-and-itest:
     description: "Build docker images and itest"
@@ -152,7 +190,7 @@ jobs:
 
       - run:
           command: make lbuild
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
+          workdirr: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
       - run:
           name: Check main modules in go.mod
           background: true
@@ -248,12 +286,6 @@ jobs:
 
 workflows:
   version: 2
-  flow1:
-    jobs:
-      - localbuild
-  flow2:
-    jobs:
-      - localbuild
   test_and_release:
     jobs:
       - itestsource
