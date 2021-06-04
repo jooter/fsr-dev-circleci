@@ -2,19 +2,27 @@ SHELL:=/bin/bash
 ####
 # images: register, gateway, provider, lotus full/daemon
 
-####
-# BR="257-gateway-dht-discover-offer-request"
-
-# 2 pr for gatewayadmin and itest
-BR?="269-gatewayadmin-add-new-requester-2"
-
-# BR="247-gateway-paymentmgr-initialisation"
-
-# BR="252-provider-paymentmgr-initialisation"
-
-# BR="270-add-new-requester"
-
+#### branches have deleted only locally
+# BR="263-provideradmin-initialise-key-v2"
+# BR="262-gatewayadmin-initialise-key-v2"
+#### branches have deleted remotely and locally
+# BR="XJ1-20210528"
 # BR="XJ1-20210528a"
+# BR="269-gatewayadmin-add-new-requester"
+# BR="277-check-empty-key"
+# BR="257-gateway-dht-discover-offer-request"
+# BR="247-gateway-paymentmgr-initialisation"
+# BR="252-provider-paymentmgr-initialisation"
+# BR="252-provider-big-int-price"
+# BR="278-fix-broken-itests"
+# BR="247-gateway-paymentmgr-initialisation"
+# BR="252-provider-paymentmgr-initialisation"
+# BR="270-add-new-requester"
+#### branches have deleted remotely
+
+#### branches are working on
+# BR="271-gateway-receives-payment"
+BR="285-gateway-crash"
 
 
 REPO_6=register gateway provider client gateway-admin provider-admin
@@ -37,6 +45,130 @@ MSG:
 BR:
 	@test -n $(BR)
 
+# build
+
+build-gateway:
+	cd $(BR); \
+	cd fc-retrieval-gateway; \
+	go build -v cmd/gateway/main.go
+
+build-provider:
+	cd $(BR); \
+	cd fc-retrieval-provider; \
+	go build -v cmd/provider/main.go
+
+build-register:
+	cd $(BR); \
+	cd fc-retrieval-register; \
+	go build -v cmd/register-server/main.go
+	
+build: build-gateway build-provider build-register
+	
+lotus-daemon:
+
+apline64:
+	echo -e "FROM amd64/alpine\nRUN apk add libc6-compat" | docker build - -t alpinelib64:v1
+
+redis:
+	docker stop redis
+	docker rm redis
+	docker run --name redis --network help -e ALLOW_EMPTY_PASSWORD=yes redis:alpine redis-server --requirepass xxxx >redis.log 2>&1 &
+
+# ALLOW_EMPTY_PASSWORD=yes redis-server --protected-mode no > redis.log 2>&1 &
+# redis-server --protected-mode no > redis.log 2>&1 &
+# ALLOW_EMPTY_PASSWORD=yes redis-server --protected-mode no > redis.log 2>&1 &
+# pkill redis-server
+# docker run --name redis --network help -e ALLOW_EMPTY_PASSWORD=yes bitnami/redis:latest redis-server --requirepass "" --protected-mode no >redis.log 2>&1 &
+# docker exec -it container_id_or_name ash
+
+register:
+	cd $(BR); \
+	cd fc-retrieval-register; \
+	cp -u .env.example .env; \
+	docker stop register; \
+	docker rm register; \
+	docker run -d \
+		--env-file .env \
+		--network help \
+		-v $$(pwd):/app \
+		--name register \
+		-w /app \
+		-e REDIS_PASSWORD=xxxx \
+		alpinelib64:v1 ash -c "./main --host=0.0.0.0 --port=9020 >register.log 2>&1"
+
+provider:
+	cd $(BR); \
+	cd fc-retrieval-provider; \
+	cp -u .env.example .env; \
+	docker stop provider; \
+	docker rm provider; \
+	docker run -d \
+		--env-file .env \
+		--network help \
+		-v $$(pwd):/app \
+		--name provider \
+		-w /app \
+		-e REDIS_PASSWORD=xxxx \
+		alpinelib64:v1 ash -c "./main >g.log 2>&1"; \
+	for I in `seq 0 3`; \
+	do \
+	docker stop provider-$$I; \
+	docker rm   provider-$$I; \
+	docker run -d \
+		--env-file .env \
+		--network help \
+		-v $$(pwd):/app \
+		--name provider-$$I \
+		-w /app \
+		-e REDIS_PASSWORD=xxxx \
+		alpinelib64:v1 ash -c "./main >$$I.log 2>&1"; \
+	done
+
+gateway:
+	cd $(BR); \
+	cd fc-retrieval-gateway; \
+	cp -u .env.example .env; \
+	docker stop gateway; \
+	docker rm gateway; \
+	docker run -d \
+		--env-file .env \
+		--network help \
+		-v $$(pwd):/app \
+		--name gateway \
+		-w /app \
+		-e REDIS_PASSWORD=xxxx \
+		alpinelib64:v1 ash -c "./main >g.log 2>&1"; \
+	for I in `seq 0 32`; \
+	do \
+	docker stop gateway-$$I; \
+	docker rm   gateway-$$I; \
+	docker run -d \
+		--env-file .env \
+		--network help \
+		-v $$(pwd):/app \
+		--name gateway-$$I \
+		-w /app \
+		-e REDIS_PASSWORD=xxxx \
+		alpinelib64:v1 ash -c "./main >$$I.log 2>&1"; \
+	done
+
+hosts:
+	cd $(BR); \
+	cd fc-retrieval-itest; \
+	docker ps -q \
+        | xargs -n 1 docker inspect --format \
+        '{{ .Name }} {{range .NetworkSettings.Networks}} {{.IPAddress}}{{end}}' \
+        | sed 's#^/##' | sed 's/$$/.nip.io/' >./hosts
+
+itest:
+	cd $(BR); \
+	cd fc-retrieval-itest; \
+	export ITEST_CALLING_FROM_CONTAINER=yes; \
+	export LOG_LEVEL=debug; \
+	export LOG_TARGET=STDOUT; \
+	export LOG_SERVICE_NAME=itest; \
+	export HOSTALIASES=`realpath hosts`; \
+	go test -count=1 -p 1 -v -failfast github.com/ConsenSys/fc-retrieval-itest/pkg/poc2 # -run TestPublishDHTOffer
 
 #### Tests
 
@@ -49,6 +181,18 @@ t1: BR
 	go test github.com/ConsenSys/fc-retrieval-common/pkg/fcrmessages
 
 #### Total 4 steps below
+s0: BR
+	@set -x;
+	@cd $(BR);
+	@for d in $(REPO_8); \
+	do \
+		d=fc-retrieval-$$d; \
+		cd /home/localadmin/localbuild/$(BR)/$$d && \
+		true git remote set-url origin git@github.com:ConsenSys/$$d.git && \
+		git push origin --delete $(BR) && \
+		pwd; \
+	done
+
 # check out 
 s1: BR
 	@set -e; \
@@ -64,9 +208,23 @@ s1: BR
 		cd ..; \
 	done
 
+
 # update dependency
 # useremote may break itest
 s2A: BR
+	set -e; \
+	cd $(BR); \
+	true for d in common; \
+	for d in $(REPO_8); \
+	do \
+		d=fc-retrieval-$$d; \
+		cd $$d; \
+		git fetch; \
+		git merge origin/main; \
+		cd ..; \
+	done
+
+s2B: BR
 	set -e; \
 	cd $(BR); \
 	true for d in common; \
@@ -78,7 +236,8 @@ s2A: BR
 		cd ..; \
 	done
 
-s2: s2A s3A s3
+
+s2: s2A s2B s3A s3
 
 s3A: BR
 	set -e; \
@@ -110,7 +269,7 @@ s3: s3A BR
 
 # push
 s4: BR
-	set -e; \
+	set -ex; \
 	cd $(BR); \
 	true for d in common; \
 	for d in $(REPO_8); \
@@ -120,9 +279,12 @@ s4: BR
 		git add -v -u :/ ; \
 		pwd; \
 		git status -s; \
-		st=$$(git status --porcelain); \
-		test -n "$$st" && git commit -a && git push origin $(BR); \
-		test -z "$$st" && git push origin $(BR); \
+		make useremote; \
+		st=$$(git status -s go.mod); \
+	       	test -n "$$st" && git commit -m "update dependency in go.mod" go.mod go.sum;  \
+		st=$$(git status -s); \
+		test -n "$$st" && git commit -a && git push origin HEAD; \
+		test -z "$$st" && git push origin HEAD; \
 		cd ..; \
 	done
 
