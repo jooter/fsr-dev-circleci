@@ -63,8 +63,16 @@ build-register:
 	go build -v cmd/register-server/main.go
 	
 build: build-gateway build-provider build-register
-	
-lotus-daemon:
+
+# -v /etc/timezone:/etc/timezone:ro \
+# -v /etc/localtime:/etc/localtime:ro \
+# ALLOW_EMPTY_PASSWORD=yes redis-server --protected-mode no > redis.out 2>&1 &
+# redis-server --protected-mode no > redis.out 2>&1 &
+# ALLOW_EMPTY_PASSWORD=yes redis-server --protected-mode no > redis.out 2>&1 &
+# pkill redis-server
+# docker run --name redis --network help -e ALLOW_EMPTY_PASSWORD=yes bitnami/redis:latest redis-server --requirepass "" --protected-mode no >redis.out 2>&1 &
+# docker exec -it container_id_or_name ash
+
 
 apline64:
 	echo -e "FROM amd64/alpine\nRUN apk add libc6-compat" | docker build - -t alpinelib64:v1
@@ -72,15 +80,11 @@ apline64:
 redis:
 	docker stop redis
 	docker rm redis
-	docker run --name redis --network help -e ALLOW_EMPTY_PASSWORD=yes redis:alpine redis-server --requirepass xxxx >redis.log 2>&1 &
-
-# ALLOW_EMPTY_PASSWORD=yes redis-server --protected-mode no > redis.log 2>&1 &
-# redis-server --protected-mode no > redis.log 2>&1 &
-# ALLOW_EMPTY_PASSWORD=yes redis-server --protected-mode no > redis.log 2>&1 &
-# pkill redis-server
-# docker run --name redis --network help -e ALLOW_EMPTY_PASSWORD=yes bitnami/redis:latest redis-server --requirepass "" --protected-mode no >redis.log 2>&1 &
-# docker exec -it container_id_or_name ash
-
+	docker run --name redis --network help \
+		-e TZ=Australia/Melbourne \
+		-e ALLOW_EMPTY_PASSWORD=yes \
+		redis:alpine redis-server --requirepass xxxx >redis.out 2>&1 &
+	
 register:
 	cd $(BR); \
 	cd fc-retrieval-register; \
@@ -93,65 +97,47 @@ register:
 		-v $$(pwd):/app \
 		--name register \
 		-w /app \
+		-e TZ=Australia/Melbourne \
 		-e REDIS_PASSWORD=xxxx \
-		alpinelib64:v1 ash -c "./main --host=0.0.0.0 --port=9020 >register.log 2>&1"
-
+		alpinelib64:v1 ash -c "./main --host=0.0.0.0 --port=9020 >register.out 2>&1"
 provider:
 	cd $(BR); \
 	cd fc-retrieval-provider; \
 	cp -u .env.example .env; \
-	docker stop provider; \
-	docker rm provider; \
-	docker run -d \
-		--env-file .env \
-		--network help \
-		-v $$(pwd):/app \
-		--name provider \
-		-w /app \
-		-e REDIS_PASSWORD=xxxx \
-		alpinelib64:v1 ash -c "./main >g.log 2>&1"; \
-	for I in `seq 0 3`; \
+	for I in "" `seq 0 3| sed 's/^/-/'`; \
 	do \
-	docker stop provider-$$I; \
-	docker rm   provider-$$I; \
+	dname=provider$$I;
+	docker stop $$dname || true; \
+	docker rm   $$dname || true; \
 	docker run -d \
 		--env-file .env \
 		--network help \
 		-v $$(pwd):/app \
-		--name provider-$$I \
+		--name $$dname \
 		-w /app \
+		-e TZ=Australia/Melbourne \
 		-e REDIS_PASSWORD=xxxx \
-		alpinelib64:v1 ash -c "./main >$$I.log 2>&1"; \
+		alpinelib64:v1 ash -c "./main >$$dname.out 2>&1"; \
 	done
-
 gateway:
 	cd $(BR); \
 	cd fc-retrieval-gateway; \
 	cp -u .env.example .env; \
-	docker stop gateway; \
-	docker rm gateway; \
-	docker run -d \
-		--env-file .env \
-		--network help \
-		-v $$(pwd):/app \
-		--name gateway \
-		-w /app \
-		-e REDIS_PASSWORD=xxxx \
-		alpinelib64:v1 ash -c "./main >g.log 2>&1"; \
-	for I in `seq 0 32`; \
+	for I in "" `seq 0 32| sed 's/^/-/'`; \
 	do \
-	docker stop gateway-$$I; \
-	docker rm   gateway-$$I; \
+	dname=gateway$$I;
+	docker stop $$dname || true; \
+	docker rm   $$dname || true; \
 	docker run -d \
 		--env-file .env \
 		--network help \
 		-v $$(pwd):/app \
-		--name gateway-$$I \
+		--name $$dname \
 		-w /app \
+		-e TZ=Australia/Melbourne \
 		-e REDIS_PASSWORD=xxxx \
-		alpinelib64:v1 ash -c "./main >$$I.log 2>&1"; \
+		alpinelib64:v1 ash -c "./main >$$dname.out 2>&1"; \
 	done
-
 hosts:
 	cd $(BR); \
 	cd fc-retrieval-itest; \
@@ -159,7 +145,6 @@ hosts:
         | xargs -n 1 docker inspect --format \
         '{{ .Name }} {{range .NetworkSettings.Networks}} {{.IPAddress}}{{end}}' \
         | sed 's#^/##' | sed 's/$$/.nip.io/' >./hosts
-
 itest:
 	cd $(BR); \
 	cd fc-retrieval-itest; \
@@ -168,7 +153,44 @@ itest:
 	export LOG_TARGET=STDOUT; \
 	export LOG_SERVICE_NAME=itest; \
 	export HOSTALIASES=`realpath hosts`; \
-	go test -count=1 -p 1 -v -failfast github.com/ConsenSys/fc-retrieval-itest/pkg/poc2 # -run TestPublishDHTOffer
+	free -h; \
+	true go test -count=1 -p 1 -v -failfast github.com/ConsenSys/fc-retrieval-itest/pkg/poc2; \
+	go test -count=1 -p 1 -v -failfast github.com/ConsenSys/fc-retrieval-itest/pkg/poc2 \
+	-run 'TestPublishDHTOffer|TestInitialiseProviders|TestInitialiseGateways'
+
+lotus-start:
+	docker start lotus-daemon >lotus.out 2>&1 &
+redis-start:
+	docker start redis
+register-start:
+	docker start register
+provider-start:
+	for I in "" `seq 0 3| sed 's/^/-/'`; do \
+		echo provider$$I; \
+	done | xargs docker start
+gateway-start:
+	for I in "" `seq 0 32| sed 's/^/-/'`; do \
+		echo gateway$$I; \
+	done | xargs docker start
+
+lotus-stop:
+	docker stop lotus-daemon || true
+redis-stop:
+	docker stop redis || true
+register-stop:
+	docker stop register || true
+provider-stop:
+	for I in "" `seq 0 3| sed 's/^/-/'`; do \
+		echo provider$$I; \
+	done | xargs docker stop
+gateway-stop:
+	for I in "" `seq 0 32| sed 's/^/-/'`; do \
+		echo gateway$$I; \
+	done | xargs docker stop
+
+docker-rebuild: apline64 redis register provider gateway hosts itest
+docker-stop: gateway-stop provider-stop register-stop redis-stop lotus-stop
+docker-start: lotus-start redis-start register-start provider-start gateway-start
 
 #### Tests
 
