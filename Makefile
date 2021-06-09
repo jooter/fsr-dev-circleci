@@ -22,7 +22,8 @@ SHELL:=/bin/bash
 
 #### branches are working on
 # BR="271-gateway-receives-payment"
-BR="285-gateway-crash"
+# BR="285-gateway-crash"
+BR="182-more-utest-for-common"
 
 
 REPO_6=register gateway provider client gateway-admin provider-admin
