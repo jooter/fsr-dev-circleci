@@ -7,7 +7,7 @@ parameters:
     type: string
     default: ""
 commands:
-  getrepobranch:
+  getrepobranch0:
     description: "Get correct branch on repo"
     parameters:
       repo:
@@ -45,103 +45,82 @@ commands:
             git rev-parse HEAD
           working_directory: << parameters.workdir >>
 
-jobs:
-  # Do a local build first, just to make sure the integration test code builds.
-  checkmainmodules:
-    docker:
-      - image: circleci/golang:1.15
-    working_directory: /go/src/github.com/ConsenSys/fc-retrieval-itest/
+  getrepobranch:
+    description: "Get correct branch on repo"
+    parameters:
+      repo:
+        type: string
+      workdir:
+        type: string
     steps:
-      - checkout
+      # git clone the repos and switch to a branch which matches the
+      # name of the branch on the Client repo. If no such branch exists, just use main
       - run:
-          name: Check main modules in go.mod
-          command: make check-main-modules
-
-  localbuild:
-    docker:
-      - image: circleci/golang:1.15
-    working_directory: /go/src/github.com/ConsenSys/fc-retrieval-itest/
-    steps:
-      - checkout
-      - run: true make lbuild
-
-  # Integration tests using source code
-  itestsource:
-    machine:
-      image: ubuntu-1604:202007-01
-      docker_layer_caching: false
-    working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
-    steps:
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-itest"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-client"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-client"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-common"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-common"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-gateway"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-gateway-admin"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway-admin"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-provider"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-provider-admin"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider-admin"
-      - getrepobranch:
-          repo: "https://github.com/ConsenSys/fc-retrieval-register"
-          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register"
-
-
-      - run:
-          name: Register - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register/
-      - run:
-          name: Provider - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider/
-      - run:
-          name: Client - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-client/
-      - run:
-          name: Gateway Admin - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway-admin/
-      - run:
-          name: Gateway - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway/
-      - run:
-          name: ITest - Use remote config
-          command: make useremote
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
-      - run:
-          name: Check any go.mod has been updated by useremote, if failed, is a warning only
-          working_directory: /home/circleci/go/src/github.com/ConsenSys/
-          background: true
+          name: "Git get correct branch for << parameters.repo >>"
+          #head=$(git --git-dir=fc-retrieval-gateway/.git rev-parse HEAD)
+          #git --git-dir=fc-retrieval-gateway/.git reset --hard "$head"
           command: |
-            # if this task is failed, 
-            # it is warning for any go.mod has been updated by useremote
-            # 
-            rm -f go_mod_diff.txt
-            for repo in register provider gateway client gateway-admin provider-admin
+            mkdir -p /home/circleci/go/src/github.com/ConsenSys/
+            cd /home/circleci/go/src/github.com/ConsenSys/
+            git clone << parameters.repo >>
+            cd << parameters.workdir >>
+            BRANCH=$CIRCLE_BRANCH
+            if [ -z "$BRANCH" ]; then
+              echo Using main
+              BRANCH=main
+            else 
+              existed_in_local=$(git branch -r --list origin/"$BRANCH")
+              if [ -z "$existed_in_local" ]; then 
+                echo << parameters.repo >> repo branch is main
+              else 
+                echo << parameters.repo >> branch is "$BRANCH"
+                git fetch
+                git checkout "$BRANCH"
+              fi
+            fi
+            # echo to the screen the git hash
+            git rev-parse HEAD
+          working_directory: << parameters.workdir >>
+
+  getrepo:
+    description: "Get correct branch on repo"
+    steps:
+      # git clone the repos and switch to a branch which matches the
+      # name of the branch on the Client repo. If no such branch exists, just use main
+      - run:
+          name: "Git checkout correct branch"
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/
+          command: |
+            for repo in common register provider client gateway-admin gateway itest provider-admin
             do
-              echo
               repo=fc-retrieval-$repo
+              git clone "https://github.com/ConsenSys/$repo"
               cd $repo
-              git -P diff --unified=0 go.mod
-              echo check go.mod in $repo
-              git -P diff --unified=0 go.mod >> ../go_mod_diff.txt
+              BRANCH=$CIRCLE_BRANCH
+              if [ -z "$BRANCH" ]; then
+                echo Using main
+                BRANCH=main
+                exit 1
+              else 
+                existed_in_local=$(git branch -r --list origin/"$BRANCH")
+                if [ -z "$existed_in_local" ]; then 
+                  echo $repo branch is main
+                else 
+                  echo $repo branch is "$BRANCH"
+                  git fetch
+                  git checkout "$BRANCH"
+                fi
+              fi
+              # echo to the screen the git hash
+              git rev-parse HEAD
               cd ..
             done
-            test ! -s go_mod_diff.txt
+
+
+
+  build-docker-and-itest:
+    description: "Build docker images and itest"
+    steps:
       - run:
           name: Make Integration Tests
           command: make clean build tag
@@ -174,6 +153,138 @@ jobs:
           name: Run Itegration Tests
           command: make itestlocal
           no_output_timeout: 120s
+
+  use-remote-0:
+    description: "Use remote 0"
+    steps:
+      - run:
+          name: Register - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-register/
+      - run:
+          name: Provider - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-provider/
+      - run:
+          name: Client - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-client/
+      - run:
+          name: Gateway Admin - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway-admin/
+      - run:
+          name: Gateway - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-gateway/
+      - run:
+          name: ITest - Use remote config
+          command: make useremote
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+  use-remote:
+    description: "Use remote"
+    steps:
+      - run:
+          name: Use remote config
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/
+          command: |
+            for repo in register provider client gateway-admin gateway itest # provider-admin
+            do
+              repo=fc-retrieval-$repo
+              cd $repo
+              make useremote
+              cd ..
+            done
+ 
+
+  build-docker-and-itest-2:
+    description: "Build docker images and itest 2"
+    steps:
+      - run:
+          name: Build Docker Image - fc daemon, reg, provider, gw
+          command: echo make clean build tag
+      - run:
+          name: Execute Integration Tests
+          command: echo make clean build tag
+ 
+jobs:
+  # Do a local build first, just to make sure the integration test code builds.
+  checkmainmodules:
+    docker:
+      - image: circleci/golang:1.15
+    working_directory: /go/src/github.com/ConsenSys/fc-retrieval-itest/
+    steps:
+      - checkout
+      - run:
+          name: Check main modules in go.mod
+          command: make check-main-modules
+
+  localbuild:
+    docker:
+      - image: circleci/golang:1.15
+    working_directory: /go/src/github.com/ConsenSys/fc-retrieval-itest/
+    steps:
+      - checkout
+      - run: true make lbuild
+
+  # Integration tests using source code
+  #
+  # 1 checkout
+  # check-main-modules
+  # 2 lbuild - build tests
+  # 3 useremote
+  # check-main-modules
+  # 4 lbuild - build tests
+  #
+  # 5 build docker images
+  # 6 itestlocal
+  itestsource:
+    machine:
+      image: ubuntu-1604:202007-01
+      docker_layer_caching: false
+    working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+    steps:
+      - getrepo
+
+      - run:
+          command: |
+            make lbuild # in itest
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+
+      - run:
+          name: Check main modules in go.mod
+          background: true
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest/
+          command: make check-main-modules
+
+      - use-remote
+
+      - run:
+          name: Check any go.mod has been updated by useremote, if failed, is a warning only
+          working_directory: /home/circleci/go/src/github.com/ConsenSys/
+          background: true
+          command: |
+            # if this task is failed, 
+            # it is warning for any go.mod has been updated by useremote
+            # 
+            rm -f go_mod_diff.txt
+            for repo in register provider gateway client gateway-admin provider-admin itest
+            do
+              echo
+              repo=fc-retrieval-$repo
+              cd $repo
+              git -P diff --unified=0 go.mod
+              echo check go.mod in $repo
+              git -P diff --unified=0 go.mod >> ../go_mod_diff.txt
+              cd ..
+            done
+            test ! -s go_mod_diff.txt
+      - run:
+          command: |
+            make lbuild # after use remote
+          workdir: "/home/circleci/go/src/github.com/ConsenSys/fc-retrieval-itest"
+
+      - build-docker-and-itest-2
 
   # Integration tests using Docker. Build and run integration tests based on go.mod
   itestdocker:
@@ -211,15 +322,20 @@ workflows:
   version: 2
   test_and_release:
     jobs:
-      - localbuild
-      - itestsource:
-          requires:
-            - localbuild
+      - itestsource
+#     - localbuild
+#     - itestsource:
+#         requires:
+#           - localbuild
+#     - itestbuild:
+#         requires:
+#           - localbuild
+#           - itestsource
       # - itestdocker:
       #     requires:
       #       - localbuild
-      - checkmainmodules:
-          requires:
-            - localbuild
-            - itestsource
-            # - itestdocker
+    # - checkmainmodules:
+    #     requires:
+    #       - localbuild
+    #       - itestsource
+    #       # - itestdocker
